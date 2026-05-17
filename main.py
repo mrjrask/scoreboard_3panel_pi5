@@ -86,10 +86,31 @@ class PiomatterDisplay:
             errors.append(f"piomatter.PioMatter: {exc}")
 
         try:
-            from adafruit_blinka_raspberry_pi5_piomatter import rgbmatrix
-            return rgbmatrix.RGBMatrix(width=width, height=height, bit_depth=bit_depth, chain_across=chain_across, chain_down=chain_down)
+            # Newer package versions expose RGBMatrix at package top-level;
+            # older versions keep it in the rgbmatrix submodule.
+            try:
+                from adafruit_blinka_raspberry_pi5_piomatter import RGBMatrix
+            except Exception:
+                from adafruit_blinka_raspberry_pi5_piomatter.rgbmatrix import RGBMatrix
+
+            try:
+                return RGBMatrix(
+                    width=width,
+                    height=height,
+                    bit_depth=bit_depth,
+                    chain_across=chain_across,
+                    chain_down=chain_down,
+                )
+            except TypeError:
+                # Some releases accept rows/cols/chains-style arguments.
+                return RGBMatrix(
+                    width=width,
+                    height=height,
+                    bit_depth=bit_depth,
+                    chain_count=chain_across * chain_down,
+                )
         except Exception as exc:
-            errors.append(f"adafruit...rgbmatrix.RGBMatrix: {exc}")
+            errors.append(f"adafruit...RGBMatrix: {exc}")
 
         raise RuntimeError(
             "Unable to initialize Blinka Pi5 Piomatter driver. "
