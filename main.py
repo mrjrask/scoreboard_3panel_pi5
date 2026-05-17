@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import threading
 from dataclasses import asdict, dataclass
@@ -86,15 +87,28 @@ class PiomatterDisplay:
             errors.append(f"piomatter.PioMatter: {exc}")
 
         try:
-            # Newer package versions expose RGBMatrix at package top-level;
-            # older versions keep it in the rgbmatrix submodule.
-            try:
-                from adafruit_blinka_raspberry_pi5_piomatter import RGBMatrix
-            except Exception:
-                from adafruit_blinka_raspberry_pi5_piomatter.rgbmatrix import RGBMatrix
+            pkg = importlib.import_module("adafruit_blinka_raspberry_pi5_piomatter")
+            rgb_matrix_cls = getattr(pkg, "RGBMatrix", None)
+
+            if rgb_matrix_cls is None:
+                for module_name in ("rgbmatrix", "piomatter"):
+                    try:
+                        mod = importlib.import_module(f"adafruit_blinka_raspberry_pi5_piomatter.{module_name}")
+                    except Exception:
+                        continue
+                    rgb_matrix_cls = getattr(mod, "RGBMatrix", None)
+                    if rgb_matrix_cls is not None:
+                        break
+
+            if rgb_matrix_cls is None:
+                exported = sorted(name for name in dir(pkg) if not name.startswith("_"))
+                raise RuntimeError(
+                    "RGBMatrix not found in package exports or known submodules; "
+                    f"available exports: {', '.join(exported[:25])}"
+                )
 
             try:
-                return RGBMatrix(
+                return rgb_matrix_cls(
                     width=width,
                     height=height,
                     bit_depth=bit_depth,
@@ -102,8 +116,7 @@ class PiomatterDisplay:
                     chain_down=chain_down,
                 )
             except TypeError:
-                # Some releases accept rows/cols/chains-style arguments.
-                return RGBMatrix(
+                return rgb_matrix_cls(
                     width=width,
                     height=height,
                     bit_depth=bit_depth,
