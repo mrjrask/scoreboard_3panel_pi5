@@ -88,42 +88,65 @@ class PiomatterDisplay:
 
         try:
             pkg = importlib.import_module("adafruit_blinka_raspberry_pi5_piomatter")
-            rgb_matrix_cls = getattr(pkg, "RGBMatrix", None)
+            driver_cls = None
 
-            if rgb_matrix_cls is None:
+            for class_name in ("RGBMatrix", "PioMatter"):
+                driver_cls = getattr(pkg, class_name, None)
+                if driver_cls is not None:
+                    break
+
+            if driver_cls is None:
                 for module_name in ("rgbmatrix", "piomatter"):
                     try:
                         mod = importlib.import_module(f"adafruit_blinka_raspberry_pi5_piomatter.{module_name}")
                     except Exception:
                         continue
-                    rgb_matrix_cls = getattr(mod, "RGBMatrix", None)
-                    if rgb_matrix_cls is not None:
+                    for class_name in ("RGBMatrix", "PioMatter"):
+                        driver_cls = getattr(mod, class_name, None)
+                        if driver_cls is not None:
+                            break
+                    if driver_cls is not None:
                         break
 
-            if rgb_matrix_cls is None:
+            if driver_cls is None:
                 exported = sorted(name for name in dir(pkg) if not name.startswith("_"))
                 raise RuntimeError(
-                    "RGBMatrix not found in package exports or known submodules; "
+                    "No supported matrix driver class found (expected RGBMatrix or PioMatter); "
                     f"available exports: {', '.join(exported[:25])}"
                 )
 
-            try:
-                return rgb_matrix_cls(
-                    width=width,
-                    height=height,
-                    bit_depth=bit_depth,
-                    chain_across=chain_across,
-                    chain_down=chain_down,
-                )
-            except TypeError:
-                return rgb_matrix_cls(
-                    width=width,
-                    height=height,
-                    bit_depth=bit_depth,
-                    chain_count=chain_across * chain_down,
-                )
+            init_arg_sets = (
+                {
+                    "width": width,
+                    "height": height,
+                    "bit_depth": bit_depth,
+                    "chain_across": chain_across,
+                    "chain_down": chain_down,
+                },
+                {
+                    "width": width,
+                    "height": height,
+                    "bit_depth": bit_depth,
+                    "chain_count": chain_across * chain_down,
+                },
+                {
+                    "width": width,
+                    "height": height,
+                    "bit_depth": bit_depth,
+                },
+            )
+            constructor_errors = []
+            for kwargs in init_arg_sets:
+                try:
+                    return driver_cls(**kwargs)
+                except TypeError as exc:
+                    constructor_errors.append(f"{kwargs}: {exc}")
+
+            raise RuntimeError(
+                f"{driver_cls.__name__} constructor signature mismatch: " + " ; ".join(constructor_errors)
+            )
         except Exception as exc:
-            errors.append(f"adafruit...RGBMatrix: {exc}")
+            errors.append(f"adafruit...driver: {exc}")
 
         raise RuntimeError(
             "Unable to initialize Blinka Pi5 Piomatter driver. "
