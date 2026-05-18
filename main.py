@@ -79,6 +79,18 @@ class PiomatterDisplay:
         self._driver = self._init_driver(width, height, bit_depth, chain_across, chain_down)
 
     def _init_driver(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int):
+        def _pick_enum(default_name: str, enum_obj, fallbacks: tuple[str, ...]):
+            for name in (default_name, *fallbacks):
+                if hasattr(enum_obj, name):
+                    return getattr(enum_obj, name)
+            try:
+                members = list(enum_obj)
+            except Exception:
+                members = []
+            if members:
+                return members[0]
+            raise RuntimeError(f"Could not select a value from enum {enum_obj}")
+
         errors = []
         try:
             import piomatter
@@ -147,6 +159,30 @@ class PiomatterDisplay:
             )
         except Exception as exc:
             errors.append(f"adafruit...driver: {exc}")
+
+        try:
+            mod = importlib.import_module("adafruit_blinka_raspberry_pi5_piomatter._piomatter")
+            pio_matter = getattr(mod, "PioMatter")
+            colorspace_enum = getattr(mod, "Colorspace")
+            pinout_enum = getattr(mod, "Pinout")
+            geometry_cls = getattr(mod, "Geometry")
+
+            geometry = geometry_cls(width=width, height=height, chain_across=chain_across, chain_down=chain_down)
+            framebuffer = bytearray(width * height * 3)
+
+            colorspace = _pick_enum("RGB888", colorspace_enum, ("RGB565", "RGB666", "RGB"))
+            pinout = _pick_enum("ADAFRUIT_MATRIXBONNET", pinout_enum, ("ADAFRUIT_FEATHERWING", "DEFAULT"))
+
+            driver = pio_matter(colorspace=colorspace, pinout=pinout, framebuffer=framebuffer, geometry=geometry)
+
+            if hasattr(driver, "bit_depth"):
+                try:
+                    driver.bit_depth = bit_depth
+                except Exception:
+                    pass
+            return driver
+        except Exception as exc:
+            errors.append(f"adafruit..._piomatter: {exc}")
 
         raise RuntimeError(
             "Unable to initialize Blinka Pi5 Piomatter driver. "
