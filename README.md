@@ -41,10 +41,24 @@ sudo systemctl enable --now scoreboard.service
 python main.py --panel-width 64 --panel-height 32 --chain-across 3 --chain-down 1
 ```
 
-- For 1/8-scan 32px-tall panels, force 4 address lines if auto-detect is wrong:
+- This repo now defaults to `--panel-scan 1/8`, which is safest for common 64x32 P5 baseball panels on Triple Bonnet setups.
 
 ```bash
-python main.py --panel-width 64 --panel-height 32 --chain-across 3 --chain-down 1 --addr-lines 4
+python main.py
+```
+
+- If your panels are not 1/8-scan, set scan hint explicitly so address lines are inferred correctly:
+
+```bash
+python main.py --panel-scan auto   # heuristic (good fallback if scan ratio is unknown)
+python main.py --panel-scan 1/16   # many 64x32 indoor panels
+python main.py --panel-scan 1/32   # some higher multiplex panels
+```
+
+- If needed, force address lines directly (highest priority over scan hint):
+
+```bash
+python main.py --addr-lines 4
 ```
 
 - For Adafruit Triple LED Matrix Bonnet with one panel directly on each of the 3 bonnet ports, keep `--serpentine` OFF (default).
