@@ -73,12 +73,12 @@ def save_state(state: ScoreboardState) -> None:
 
 
 class PiomatterDisplay:
-    def __init__(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int):
+    def __init__(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int, addr_lines: int | None = None, serpentine: bool = False):
         self.width = width
         self.height = height
-        self._driver = self._init_driver(width, height, bit_depth, chain_across, chain_down)
+        self._driver = self._init_driver(width, height, bit_depth, chain_across, chain_down, addr_lines, serpentine)
 
-    def _init_driver(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int):
+    def _init_driver(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int, addr_lines: int | None, serpentine: bool):
         def _pick_enum(default_name: str, enum_obj, fallbacks: tuple[str, ...]):
             names = (default_name, *fallbacks)
             for name in names:
@@ -197,7 +197,7 @@ class PiomatterDisplay:
 
             # Newer bindings require explicit Geometry constructor args.
             panel_height = max(1, height // max(1, chain_down))
-            n_addr_lines = max(1, (panel_height // 2).bit_length() - 1)
+            n_addr_lines = max(1, int(addr_lines)) if addr_lines is not None else max(1, (panel_height // 2).bit_length() - 1)
 
             geometry = None
             geometry_errors = []
@@ -211,7 +211,7 @@ class PiomatterDisplay:
                     "width": width,
                     "height": height,
                     "n_addr_lines": n_addr_lines,
-                    "serpentine": True,
+                    "serpentine": serpentine,
                 },
                 {
                     "width": width,
@@ -327,6 +327,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--chain-down", type=int, default=1)
     p.add_argument("--bit-depth", type=int, default=6)
     p.add_argument("--brightness", type=int, default=70)
+    p.add_argument("--addr-lines", type=int, default=None, help="Override HUB75 address lines (e.g. 4 for 1/8 scan 32px-tall panels)")
+    p.add_argument("--serpentine", action="store_true", help="Enable serpentine panel layout in low-level _piomatter fallback (usually OFF for Triple Bonnet direct-per-port wiring)")
     p.add_argument("--listen", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8080)
     return p.parse_args()
@@ -337,7 +339,7 @@ def main() -> None:
     state = load_state(); state.brightness = args.brightness
     width = args.panel_width * args.chain_across
     height = args.panel_height * args.chain_down
-    display = PiomatterDisplay(width, height, args.bit_depth, args.chain_across, args.chain_down)
+    display = PiomatterDisplay(width, height, args.bit_depth, args.chain_across, args.chain_down, args.addr_lines, args.serpentine)
     renderer = MatrixRenderer(display, state)
     renderer.draw()
     create_app(state, renderer).run(host=args.listen, port=args.port)
