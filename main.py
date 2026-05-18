@@ -167,7 +167,41 @@ class PiomatterDisplay:
             pinout_enum = getattr(mod, "Pinout")
             geometry_cls = getattr(mod, "Geometry")
 
-            geometry = geometry_cls(width=width, height=height, chain_across=chain_across, chain_down=chain_down)
+            # Newer bindings require explicit Geometry constructor args.
+            panel_height = max(1, height // max(1, chain_down))
+            n_addr_lines = max(1, (panel_height // 2).bit_length() - 1)
+
+            geometry = None
+            geometry_errors = []
+            geometry_arg_sets = (
+                {
+                    "width": width,
+                    "height": height,
+                    "n_addr_lines": n_addr_lines,
+                },
+                {
+                    "width": width,
+                    "height": height,
+                    "n_addr_lines": n_addr_lines,
+                    "serpentine": True,
+                },
+                {
+                    "width": width,
+                    "height": height,
+                    "n_addr_lines": n_addr_lines,
+                    "n_temporal_planes": 2,
+                },
+            )
+            for gkwargs in geometry_arg_sets:
+                try:
+                    geometry = geometry_cls(**gkwargs)
+                    break
+                except TypeError as exc:
+                    geometry_errors.append(f"{gkwargs}: {exc}")
+
+            if geometry is None:
+                raise RuntimeError("Geometry constructor signature mismatch: " + " ; ".join(geometry_errors))
+
             framebuffer = bytearray(width * height * 3)
 
             colorspace = _pick_enum("RGB888", colorspace_enum, ("RGB565", "RGB666", "RGB"))
