@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import logging
 import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 STATE_FILE = Path("scoreboard_state.json")
 MAX_TEAM_CHARS = 5
+LOGGER = logging.getLogger("scoreboard")
 
 
 @dataclass
@@ -74,14 +76,19 @@ class ScoreboardState:
 
 def load_state() -> ScoreboardState:
     if STATE_FILE.exists():
-        s = ScoreboardState(**json.loads(STATE_FILE.read_text()))
-        s.clamp()
-        return s
+        try:
+            s = ScoreboardState(**json.loads(STATE_FILE.read_text()))
+            s.clamp()
+            return s
+        except Exception as exc:
+            LOGGER.warning("Failed to load saved state from %s: %s; starting with defaults.", STATE_FILE, exc)
     return ScoreboardState()
 
 
 def save_state(state: ScoreboardState) -> None:
-    STATE_FILE.write_text(json.dumps(asdict(state)))
+    tmp_path = STATE_FILE.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(asdict(state)))
+    tmp_path.replace(STATE_FILE)
 
 
 def infer_addr_lines(panel_height: int, panel_scan: str, addr_lines_override: int | None) -> int:
@@ -399,6 +406,7 @@ label { display:block; margin:8px 0 6px; color:#c9d3e3; }
 
 def create_app(state: ScoreboardState, renderer: MatrixRenderer) -> Flask:
     app = Flask(__name__)
+    state_lock = threading.Lock()
 
     actions = [
         ("Away +1", "score_a_inc", ""),
@@ -420,29 +428,32 @@ def create_app(state: ScoreboardState, renderer: MatrixRenderer) -> Flask:
 
     @app.post("/lock-toggle")
     def lock_toggle():
-        state.locked = not state.locked
-        state.clamp()
-        save_state(state)
+        with state_lock:
+            state.locked = not state.locked
+            state.clamp()
+            save_state(state)
         return redirect("/")
 
     @app.post("/action/<action>")
     def action(action: str):
-        if state.locked:
-            return redirect("/")
-        state.update(action)
-        save_state(state)
-        renderer.draw()
+        with state_lock:
+            if state.locked:
+                return redirect("/")
+            state.update(action)
+            save_state(state)
+            renderer.draw()
         return redirect("/")
 
     @app.post("/rename")
     def rename():
-        if state.locked:
-            return redirect("/")
-        state.team_a = request.form.get("team_a", state.team_a)
-        state.team_b = request.form.get("team_b", state.team_b)
-        state.clamp()
-        save_state(state)
-        renderer.draw()
+        with state_lock:
+            if state.locked:
+                return redirect("/")
+            state.team_a = request.form.get("team_a", state.team_a)
+            state.team_b = request.form.get("team_b", state.team_b)
+            state.clamp()
+            save_state(state)
+            renderer.draw()
         return redirect("/")
 
     @app.get('/state')
@@ -469,6 +480,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     args = parse_args()
     state = load_state()
     state.brightness = args.brightness
