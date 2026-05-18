@@ -80,15 +80,43 @@ class PiomatterDisplay:
 
     def _init_driver(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int):
         def _pick_enum(default_name: str, enum_obj, fallbacks: tuple[str, ...]):
-            for name in (default_name, *fallbacks):
+            names = (default_name, *fallbacks)
+            for name in names:
                 if hasattr(enum_obj, name):
                     return getattr(enum_obj, name)
-            try:
-                members = list(enum_obj)
-            except Exception:
-                members = []
-            if members:
-                return members[0]
+
+            # Python Enum-style lookup (for wrappers that expose __members__).
+            members_map = getattr(enum_obj, "__members__", None)
+            if isinstance(members_map, dict) and members_map:
+                for name in names:
+                    if name in members_map:
+                        return members_map[name]
+                return next(iter(members_map.values()))
+
+            # Some pybind11 enums support integer construction but not iteration.
+            for raw in (0, 1):
+                try:
+                    return enum_obj(raw)
+                except Exception:
+                    continue
+
+            # Best-effort scan for uppercase constants on the enum type.
+            candidates = []
+            for attr in dir(enum_obj):
+                if attr.isupper():
+                    try:
+                        value = getattr(enum_obj, attr)
+                    except Exception:
+                        continue
+                    if not callable(value):
+                        candidates.append((attr, value))
+            if candidates:
+                for name in names:
+                    for attr, value in candidates:
+                        if attr == name:
+                            return value
+                return candidates[0][1]
+
             raise RuntimeError(f"Could not select a value from enum {enum_obj}")
 
         errors = []
