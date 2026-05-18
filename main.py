@@ -230,12 +230,22 @@ class PiomatterDisplay:
             if geometry is None:
                 raise RuntimeError("Geometry constructor signature mismatch: " + " ; ".join(geometry_errors))
 
-            framebuffer = bytearray(width * height * 3)
-
             colorspace = _pick_enum("RGB888", colorspace_enum, ("RGB565", "RGB666", "RGB"))
             pinout = _pick_enum("ADAFRUIT_MATRIXBONNET", pinout_enum, ("ADAFRUIT_FEATHERWING", "DEFAULT"))
+            driver = None
+            framebuffer_errors = []
+            for bytes_per_pixel in (4, 3):
+                framebuffer = bytearray(width * height * bytes_per_pixel)
+                try:
+                    driver = pio_matter(colorspace=colorspace, pinout=pinout, framebuffer=framebuffer, geometry=geometry)
+                    break
+                except Exception as exc:
+                    framebuffer_errors.append(
+                        f"framebuffer bytes_per_pixel={bytes_per_pixel} (len={len(framebuffer)}): {exc}"
+                    )
 
-            driver = pio_matter(colorspace=colorspace, pinout=pinout, framebuffer=framebuffer, geometry=geometry)
+            if driver is None:
+                raise RuntimeError("PioMatter framebuffer compatibility mismatch: " + " ; ".join(framebuffer_errors))
 
             if hasattr(driver, "bit_depth"):
                 try:
