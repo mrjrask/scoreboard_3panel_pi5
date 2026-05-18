@@ -40,3 +40,17 @@ sudo systemctl enable --now scoreboard.service
 ```bash
 python main.py --panel-width 64 --panel-height 32 --chain-across 3 --chain-down 1
 ```
+
+- For 1/8-scan 32px-tall panels, force 4 address lines if auto-detect is wrong:
+
+```bash
+python main.py --panel-width 64 --panel-height 32 --chain-across 3 --chain-down 1 --addr-lines 4
+```
+
+- For Adafruit Triple LED Matrix Bonnet with one panel directly on each of the 3 bonnet ports, keep `--serpentine` OFF (default).
+
+- If panel wiring snakes between connectors (daisy-chained/snake layout), try enabling serpentine layout:
+
+```bash
+python main.py --serpentine
+```
