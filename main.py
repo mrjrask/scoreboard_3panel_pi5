@@ -117,6 +117,7 @@ class PiomatterDisplay:
     def __init__(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int, addr_lines: int | None = None, serpentine: bool = False):
         self.width = width
         self.height = height
+        self._framebuffer: bytearray | None = None
         self._driver = self._init_driver(width, height, bit_depth, chain_across, chain_down, addr_lines, serpentine)
 
     def _init_driver(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int, addr_lines: int | None, serpentine: bool):
@@ -275,6 +276,7 @@ class PiomatterDisplay:
                 framebuffer = bytearray(width * height * bytes_per_pixel)
                 try:
                     driver = pio_matter(colorspace=colorspace, pinout=pinout, framebuffer=framebuffer, geometry=geometry)
+                    self._framebuffer = framebuffer
                     break
                 except Exception as exc:
                     framebuffer_errors.append(
@@ -303,12 +305,35 @@ class PiomatterDisplay:
         if hasattr(self._driver, "brightness"):
             self._driver.brightness = brightness / 100.0
         if hasattr(self._driver, "show"):
-            self._driver.show(image)
+            try:
+                self._driver.show(image)
+            except TypeError:
+                self._blit_to_framebuffer(image)
+                self._driver.show()
         elif hasattr(self._driver, "image") and hasattr(self._driver, "refresh"):
             self._driver.image = image
             self._driver.refresh()
         else:
             raise RuntimeError("Piomatter driver missing supported frame output method")
+
+    def _blit_to_framebuffer(self, image: Image.Image) -> None:
+        if self._framebuffer is None:
+            raise RuntimeError("Driver requires framebuffer updates but no framebuffer is available")
+
+        rgb_bytes = image.convert("RGB").tobytes("raw", "RGB")
+        pixel_count = self.width * self.height
+        if len(self._framebuffer) == pixel_count * 3:
+            self._framebuffer[:] = rgb_bytes
+            return
+        if len(self._framebuffer) == pixel_count * 4:
+            out = bytearray(pixel_count * 4)
+            for idx in range(pixel_count):
+                src = idx * 3
+                dst = idx * 4
+                out[dst : dst + 3] = rgb_bytes[src : src + 3]
+            self._framebuffer[:] = out
+            return
+        raise RuntimeError(f"Unsupported framebuffer size {len(self._framebuffer)} for {pixel_count} pixels")
 
 
 class MatrixRenderer:
