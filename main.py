@@ -348,20 +348,20 @@ class MatrixRenderer:
             image = Image.new("RGB", (self.display.width, self.display.height), (0, 0, 0))
             draw = ImageDraw.Draw(image)
             white, amber, red, green = (255, 255, 255), (255, 180, 0), (255, 50, 50), (60, 255, 60)
-            panel_w = self.display.width // 3
+            panel_h = self.display.height // 3
 
-            def block(x: int, title: str, team: str, score: int):
-                draw.text((x + 2, 2), title, fill=white, font=self.font)
-                draw.text((x + 2, 16), team, fill=white, font=self.font)
-                draw.text((x + panel_w - 12, 16), str(score), fill=amber, font=self.font)
+            def block(y: int, title: str, team: str, score: int):
+                draw.text((2, y + 2), title, fill=white, font=self.font)
+                draw.text((2, y + 16), team, fill=white, font=self.font)
+                draw.text((self.display.width - 12, y + 16), str(score), fill=amber, font=self.font)
 
             block(0, "AWAY", self.state.team_a, self.state.score_a)
-            block(panel_w, "HOME", self.state.team_b, self.state.score_b)
-            x = panel_w * 2
+            block(panel_h, "HOME", self.state.team_b, self.state.score_b)
+            y = panel_h * 2
             half = "TOP" if self.state.inning_half == "top" else "BOT"
-            draw.text((x + 2, 2), f"{half} {self.state.inning}", fill=white, font=self.font)
-            draw.text((x + 2, 16), f"B{self.state.balls} S{self.state.strikes}", fill=green, font=self.font)
-            draw.text((x + 2, 28), f"OUT {self.state.outs}", fill=red, font=self.font)
+            draw.text((2, y + 2), f"{half} {self.state.inning}", fill=white, font=self.font)
+            draw.text((2, y + 16), f"B{self.state.balls} S{self.state.strikes}", fill=green, font=self.font)
+            draw.text((2, y + 28), f"OUT {self.state.outs}", fill=red, font=self.font)
             self.display.show(image, self.state.brightness)
 
 
@@ -492,8 +492,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--panel-width", type=int, default=64)
     p.add_argument("--panel-height", type=int, default=32)
-    p.add_argument("--chain-across", type=int, default=3)
-    p.add_argument("--chain-down", type=int, default=1)
+    p.add_argument("--chain-across", type=int, default=1)
+    p.add_argument("--chain-down", type=int, default=3)
     p.add_argument("--bit-depth", type=int, default=6)
     p.add_argument("--brightness", type=int, default=70)
     p.add_argument("--addr-lines", type=int, default=None, help="Override HUB75 address lines (e.g. 4 for 1/8 scan 32px-tall panels)")
