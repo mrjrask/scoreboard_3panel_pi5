@@ -118,6 +118,7 @@ class PiomatterDisplay:
         self.width = width
         self.height = height
         self._framebuffer: bytearray | None = None
+        self.backend_name: str = "unknown"
         self._driver = self._init_driver(width, height, bit_depth, chain_across, chain_down, addr_lines, serpentine)
 
     def _init_driver(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int, addr_lines: int | None, serpentine: bool):
@@ -161,6 +162,8 @@ class PiomatterDisplay:
         errors = []
         try:
             import piomatter
+            self.backend_name = "piomatter.PioMatter"
+            LOGGER.info("Initialized matrix backend: %s", self.backend_name)
             return piomatter.PioMatter(width=width, height=height, bit_depth=bit_depth)
         except Exception as exc:
             errors.append(f"piomatter.PioMatter: {exc}")
@@ -217,7 +220,10 @@ class PiomatterDisplay:
             constructor_errors = []
             for kwargs in init_arg_sets:
                 try:
-                    return driver_cls(**kwargs)
+                    driver = driver_cls(**kwargs)
+                    self.backend_name = f"adafruit_blinka_raspberry_pi5_piomatter.{driver_cls.__name__}"
+                    LOGGER.info("Initialized matrix backend: %s with args=%s", self.backend_name, kwargs)
+                    return driver
                 except TypeError as exc:
                     constructor_errors.append(f"{kwargs}: {exc}")
 
@@ -291,6 +297,8 @@ class PiomatterDisplay:
                     driver.bit_depth = bit_depth
                 except Exception:
                     pass
+            self.backend_name = "adafruit_blinka_raspberry_pi5_piomatter._piomatter.PioMatter"
+            LOGGER.info("Initialized matrix backend: %s", self.backend_name)
             return driver
         except Exception as exc:
             errors.append(f"adafruit..._piomatter: {exc}")
@@ -501,6 +509,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--serpentine", action="store_true", help="Enable serpentine panel layout in low-level _piomatter fallback (usually OFF for Triple Bonnet direct-per-port wiring)")
     p.add_argument("--listen", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--init-only", action="store_true", help="Initialize LED driver, draw one frame, then exit (hardware diagnostics)")
     return p.parse_args()
 
 
@@ -517,6 +526,10 @@ def main() -> None:
     display = PiomatterDisplay(width, height, args.bit_depth, args.chain_across, args.chain_down, inferred_addr_lines, args.serpentine)
     renderer = MatrixRenderer(display, state)
     renderer.draw()
+    LOGGER.info("Initial frame rendered using backend=%s", display.backend_name)
+    if args.init_only:
+        LOGGER.info("--init-only set; exiting after successful matrix initialization and first draw")
+        return
     create_app(state, renderer).run(host=args.listen, port=args.port)
 
 
