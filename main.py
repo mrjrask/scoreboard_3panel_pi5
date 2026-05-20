@@ -500,8 +500,9 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--panel-width", type=int, default=64)
     p.add_argument("--panel-height", type=int, default=32)
-    p.add_argument("--chain-across", type=int, default=1)
-    p.add_argument("--chain-down", type=int, default=3)
+    # Triple Bonnet default: 3 panels side-by-side (192x32 total).
+    p.add_argument("--chain-across", type=int, default=3)
+    p.add_argument("--chain-down", type=int, default=1)
     p.add_argument("--bit-depth", type=int, default=6)
     p.add_argument("--brightness", type=int, default=70)
     p.add_argument("--addr-lines", type=int, default=None, help="Override HUB75 address lines (e.g. 4 for 1/8 scan 32px-tall panels)")
@@ -520,6 +521,12 @@ def main() -> None:
     state.brightness = args.brightness
     width = args.panel_width * args.chain_across
     height = args.panel_height * args.chain_down
+    if args.chain_across == 1 and args.chain_down == 3:
+        print(
+            "[scoreboard] Warning: using vertical geometry (64x96). "
+            "Most Triple Bonnet baseball installs are horizontal (192x32): "
+            "use --chain-across 3 --chain-down 1."
+        )
     inferred_addr_lines = infer_addr_lines(args.panel_height, args.panel_scan, args.addr_lines)
     print(f"[scoreboard] geometry={width}x{height} panel={args.panel_width}x{args.panel_height} scan={args.panel_scan} addr_lines={inferred_addr_lines} serpentine={args.serpentine}")
     print("[scoreboard] Default panel-scan is 1/8 for this repo. Use --panel-scan auto|1/16|1/32 or --addr-lines to match other panel types.")
