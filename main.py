@@ -114,14 +114,34 @@ def infer_addr_lines(panel_height: int, panel_scan: str, addr_lines_override: in
     return max(1, (max(1, panel_height) // 2).bit_length() - 1)
 
 class PiomatterDisplay:
-    def __init__(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int, addr_lines: int | None = None, serpentine: bool = False):
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        bit_depth: int,
+        chain_across: int,
+        chain_down: int,
+        addr_lines: int | None = None,
+        serpentine: bool = False,
+        pinout_hint: str = "auto",
+    ):
         self.width = width
         self.height = height
         self._framebuffer: bytearray | None = None
         self.backend_name: str = "unknown"
-        self._driver = self._init_driver(width, height, bit_depth, chain_across, chain_down, addr_lines, serpentine)
+        self._driver = self._init_driver(width, height, bit_depth, chain_across, chain_down, addr_lines, serpentine, pinout_hint)
 
-    def _init_driver(self, width: int, height: int, bit_depth: int, chain_across: int, chain_down: int, addr_lines: int | None, serpentine: bool):
+    def _init_driver(
+        self,
+        width: int,
+        height: int,
+        bit_depth: int,
+        chain_across: int,
+        chain_down: int,
+        addr_lines: int | None,
+        serpentine: bool,
+        pinout_hint: str,
+    ):
         def _pick_enum(default_name: str, enum_obj, fallbacks: tuple[str, ...]):
             names = (default_name, *fallbacks)
             for name in names:
@@ -275,7 +295,39 @@ class PiomatterDisplay:
                 raise RuntimeError("Geometry constructor signature mismatch: " + " ; ".join(geometry_errors))
 
             colorspace = _pick_enum("RGB888", colorspace_enum, ("RGB565", "RGB666", "RGB"))
-            pinout = _pick_enum("ADAFRUIT_MATRIXBONNET", pinout_enum, ("ADAFRUIT_FEATHERWING", "DEFAULT"))
+            # Prefer Triple Matrix Bonnet (Active3) pinouts when driving multiple panels
+            # directly from the bonnet. Fall back for older/newer enum names.
+            if pinout_hint == "active3":
+                pinout = _pick_enum(
+                    "Active3",
+                    pinout_enum,
+                    ("ACTIVE3", "Active3BGR", "ACTIVE3BGR", "ADAFRUIT_MATRIXBONNET", "ADAFRUIT_FEATHERWING", "DEFAULT"),
+                )
+            elif pinout_hint == "active3bgr":
+                pinout = _pick_enum(
+                    "Active3BGR",
+                    pinout_enum,
+                    ("ACTIVE3BGR", "Active3", "ACTIVE3", "ADAFRUIT_MATRIXBONNET", "ADAFRUIT_FEATHERWING", "DEFAULT"),
+                )
+            elif pinout_hint == "matrixbonnet":
+                pinout = _pick_enum(
+                    "ADAFRUIT_MATRIXBONNET",
+                    pinout_enum,
+                    ("DEFAULT", "Active3", "ACTIVE3", "ADAFRUIT_FEATHERWING"),
+                )
+            elif chain_across * chain_down >= 2:
+                pinout = _pick_enum(
+                    "Active3",
+                    pinout_enum,
+                    ("ACTIVE3", "Active3BGR", "ACTIVE3BGR", "ADAFRUIT_MATRIXBONNET", "ADAFRUIT_FEATHERWING", "DEFAULT"),
+                )
+            else:
+                pinout = _pick_enum(
+                    "ADAFRUIT_MATRIXBONNET",
+                    pinout_enum,
+                    ("Active3", "ACTIVE3", "ADAFRUIT_FEATHERWING", "DEFAULT"),
+                )
+            LOGGER.info("Selected Piomatter pinout enum value: %s", pinout)
             driver = None
             framebuffer_errors = []
             for bytes_per_pixel in (4, 3):
@@ -356,20 +408,32 @@ class MatrixRenderer:
             image = Image.new("RGB", (self.display.width, self.display.height), (0, 0, 0))
             draw = ImageDraw.Draw(image)
             white, amber, red, green = (255, 255, 255), (255, 180, 0), (255, 50, 50), (60, 255, 60)
-            panel_h = self.display.height // 3
 
-            def block(y: int, title: str, team: str, score: int):
-                draw.text((2, y + 2), title, fill=white, font=self.font)
-                draw.text((2, y + 16), team, fill=white, font=self.font)
-                draw.text((self.display.width - 12, y + 16), str(score), fill=amber, font=self.font)
+            # Two layout modes:
+            # - Vertical stack (64x96): 3 bands, one per panel.
+            # - Horizontal row (192x32): 3 columns, one per panel.
+            if self.display.height > self.display.width:
+                panel_h = self.display.height // 3
 
-            block(0, "AWAY", self.state.team_a, self.state.score_a)
-            block(panel_h, "HOME", self.state.team_b, self.state.score_b)
-            y = panel_h * 2
-            half = "TOP" if self.state.inning_half == "top" else "BOT"
-            draw.text((2, y + 2), f"{half} {self.state.inning}", fill=white, font=self.font)
-            draw.text((2, y + 16), f"B{self.state.balls} S{self.state.strikes}", fill=green, font=self.font)
-            draw.text((2, y + 28), f"OUT {self.state.outs}", fill=red, font=self.font)
+                def block(y: int, title: str, team: str, score: int):
+                    draw.text((2, y + 2), title, fill=white, font=self.font)
+                    draw.text((2, y + 16), team, fill=white, font=self.font)
+                    draw.text((self.display.width - 12, y + 16), str(score), fill=amber, font=self.font)
+
+                block(0, "AWAY", self.state.team_a, self.state.score_a)
+                block(panel_h, "HOME", self.state.team_b, self.state.score_b)
+                y = panel_h * 2
+                half = "TOP" if self.state.inning_half == "top" else "BOT"
+                draw.text((2, y + 2), f"{half} {self.state.inning}", fill=white, font=self.font)
+                draw.text((2, y + 16), f"B{self.state.balls} S{self.state.strikes}", fill=green, font=self.font)
+                draw.text((2, y + 28), f"OUT {self.state.outs}", fill=red, font=self.font)
+            else:
+                panel_w = self.display.width // 3
+                half = "TOP" if self.state.inning_half == "top" else "BOT"
+                draw.text((2, 2), f"A {self.state.team_a} {self.state.score_a}", fill=amber, font=self.font)
+                draw.text((panel_w + 2, 2), f"H {self.state.team_b} {self.state.score_b}", fill=white, font=self.font)
+                draw.text((panel_w * 2 + 2, 2), f"{half} {self.state.inning}", fill=white, font=self.font)
+                draw.text((panel_w * 2 + 2, 16), f"B{self.state.balls} S{self.state.strikes} O{self.state.outs}", fill=green, font=self.font)
             self.display.show(image, self.state.brightness)
 
 
@@ -508,6 +572,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--addr-lines", type=int, default=None, help="Override HUB75 address lines (e.g. 4 for 1/8 scan 32px-tall panels)")
     p.add_argument("--panel-scan", choices=("auto", "1/8", "1/16", "1/32"), default="1/8", help="Panel scan ratio hint used to infer address lines when --addr-lines is omitted (repo default: 1/8 for common 64x32 P5 panels)")
     p.add_argument("--serpentine", action="store_true", help="Enable serpentine panel layout in low-level _piomatter fallback (usually OFF for Triple Bonnet direct-per-port wiring)")
+    p.add_argument(
+        "--pinout",
+        choices=("auto", "active3", "active3bgr", "matrixbonnet"),
+        default="auto",
+        help="Force low-level _piomatter pinout selection for diagnostics (default: auto)",
+    )
     p.add_argument("--listen", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--init-only", action="store_true", help="Initialize LED driver, draw one frame, then exit (hardware diagnostics)")
@@ -522,15 +592,25 @@ def main() -> None:
     width = args.panel_width * args.chain_across
     height = args.panel_height * args.chain_down
     if args.chain_across == 1 and args.chain_down == 3:
-        print(
-            "[scoreboard] Warning: using vertical geometry (64x96). "
-            "Most Triple Bonnet baseball installs are horizontal (192x32): "
-            "use --chain-across 3 --chain-down 1."
-        )
+        print("[scoreboard] Using vertical geometry (64x96).")
+    elif args.chain_across == 3 and args.chain_down == 1:
+        print("[scoreboard] Using horizontal geometry (192x32).")
     inferred_addr_lines = infer_addr_lines(args.panel_height, args.panel_scan, args.addr_lines)
-    print(f"[scoreboard] geometry={width}x{height} panel={args.panel_width}x{args.panel_height} scan={args.panel_scan} addr_lines={inferred_addr_lines} serpentine={args.serpentine}")
+    print(
+        f"[scoreboard] geometry={width}x{height} panel={args.panel_width}x{args.panel_height} "
+        f"scan={args.panel_scan} addr_lines={inferred_addr_lines} serpentine={args.serpentine} pinout={args.pinout}"
+    )
     print("[scoreboard] Default panel-scan is 1/8 for this repo. Use --panel-scan auto|1/16|1/32 or --addr-lines to match other panel types.")
-    display = PiomatterDisplay(width, height, args.bit_depth, args.chain_across, args.chain_down, inferred_addr_lines, args.serpentine)
+    display = PiomatterDisplay(
+        width,
+        height,
+        args.bit_depth,
+        args.chain_across,
+        args.chain_down,
+        inferred_addr_lines,
+        args.serpentine,
+        args.pinout,
+    )
     renderer = MatrixRenderer(display, state)
     renderer.draw()
     LOGGER.info("Initial frame rendered using backend=%s", display.backend_name)
