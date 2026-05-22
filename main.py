@@ -275,7 +275,21 @@ class PiomatterDisplay:
                 raise RuntimeError("Geometry constructor signature mismatch: " + " ; ".join(geometry_errors))
 
             colorspace = _pick_enum("RGB888", colorspace_enum, ("RGB565", "RGB666", "RGB"))
-            pinout = _pick_enum("ADAFRUIT_MATRIXBONNET", pinout_enum, ("ADAFRUIT_FEATHERWING", "DEFAULT"))
+            # Prefer Triple Matrix Bonnet (Active3) pinouts when driving multiple panels
+            # directly from the bonnet. Fall back for older/newer enum names.
+            if chain_across * chain_down >= 2:
+                pinout = _pick_enum(
+                    "Active3",
+                    pinout_enum,
+                    ("ACTIVE3", "Active3BGR", "ACTIVE3BGR", "ADAFRUIT_MATRIXBONNET", "ADAFRUIT_FEATHERWING", "DEFAULT"),
+                )
+            else:
+                pinout = _pick_enum(
+                    "ADAFRUIT_MATRIXBONNET",
+                    pinout_enum,
+                    ("Active3", "ACTIVE3", "ADAFRUIT_FEATHERWING", "DEFAULT"),
+                )
+            LOGGER.info("Selected Piomatter pinout enum value: %s", pinout)
             driver = None
             framebuffer_errors = []
             for bytes_per_pixel in (4, 3):
