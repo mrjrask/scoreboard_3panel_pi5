@@ -68,3 +68,29 @@ python main.py --addr-lines 4
 ```bash
 python main.py --serpentine
 ```
+
+## 1/8-scan panel troubleshooting workflow
+
+If output is scrambled, mirrored, wrong color order, or panels appear swapped:
+
+1. Verify baseline startup:
+   ```bash
+   python main.py --panel-scan 1/8 --init-only
+   ```
+2. Draw the built-in panel test pattern to verify physical panel order and color channels:
+   ```bash
+   python main.py --panel-scan 1/8 --test-pattern panel
+   ```
+   Expected on a 3-panel horizontal setup (left→right): **P1 red**, **P2 green**, **P3 blue**.
+3. If colors are wrong, try alternate pinout:
+   ```bash
+   python main.py --panel-scan 1/8 --pinout active3bgr --test-pattern panel
+   ```
+4. If rows/sections are wrong, force address lines explicitly:
+   ```bash
+   python main.py --panel-scan 1/8 --addr-lines 4 --test-pattern panel
+   ```
+5. If your wiring is daisy-chained/snake-like instead of one panel per bonnet port, test:
+   ```bash
+   python main.py --panel-scan 1/8 --serpentine --test-pattern panel
+   ```

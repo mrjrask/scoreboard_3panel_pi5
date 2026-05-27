@@ -404,10 +404,17 @@ class MatrixRenderer:
         self.font = ImageFont.load_default()
 
     def draw(self) -> None:
+        self.draw_mode("scoreboard")
+
+    def draw_mode(self, mode: str = "scoreboard") -> None:
         with self.lock:
             image = Image.new("RGB", (self.display.width, self.display.height), (0, 0, 0))
             draw = ImageDraw.Draw(image)
             white, amber, red, green = (255, 255, 255), (255, 180, 0), (255, 50, 50), (60, 255, 60)
+            if mode == "panel_test":
+                self._draw_panel_test(draw)
+                self.display.show(image, self.state.brightness)
+                return
 
             # Two layout modes:
             # - Vertical stack (64x96): 3 bands, one per panel.
@@ -435,6 +442,17 @@ class MatrixRenderer:
                 draw.text((panel_w * 2 + 2, 2), f"{half} {self.state.inning}", fill=white, font=self.font)
                 draw.text((panel_w * 2 + 2, 16), f"B{self.state.balls} S{self.state.strikes} O{self.state.outs}", fill=green, font=self.font)
             self.display.show(image, self.state.brightness)
+
+    def _draw_panel_test(self, draw: ImageDraw.ImageDraw) -> None:
+        panel_w = max(1, self.display.width // 3)
+        colors = ((255, 0, 0), (0, 220, 0), (0, 90, 255))
+        labels = ("P1", "P2", "P3")
+        for idx, (color, label) in enumerate(zip(colors, labels)):
+            x0 = idx * panel_w
+            x1 = min(self.display.width - 1, x0 + panel_w - 1)
+            draw.rectangle((x0, 0, x1, self.display.height - 1), outline=color, width=1)
+            draw.text((x0 + 2, 2), label, fill=color, font=self.font)
+            draw.text((x0 + 2, 14), color == colors[0] and "R" or color == colors[1] and "G" or "B", fill=color, font=self.font)
 
 
 HTML = """<!doctype html>
@@ -581,6 +599,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--listen", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--init-only", action="store_true", help="Initialize LED driver, draw one frame, then exit (hardware diagnostics)")
+    p.add_argument(
+        "--test-pattern",
+        choices=("off", "panel"),
+        default="off",
+        help="Draw a startup diagnostic test pattern instead of scoreboard data (helps verify panel wiring/order/colors)",
+    )
     return p.parse_args()
 
 
@@ -612,7 +636,11 @@ def main() -> None:
         args.pinout,
     )
     renderer = MatrixRenderer(display, state)
-    renderer.draw()
+    if args.test_pattern == "panel":
+        renderer.draw_mode("panel_test")
+        LOGGER.info("Rendered panel test pattern (P1/P2/P3, R/G/B)")
+    else:
+        renderer.draw()
     LOGGER.info("Initial frame rendered using backend=%s", display.backend_name)
     if args.init_only:
         LOGGER.info("--init-only set; exiting after successful matrix initialization and first draw")
