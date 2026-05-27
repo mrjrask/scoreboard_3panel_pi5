@@ -144,15 +144,33 @@ class PiomatterDisplay:
     ):
         def _pick_enum(default_name: str, enum_obj, fallbacks: tuple[str, ...]):
             names = (default_name, *fallbacks)
+
+            def _normalize(name: str) -> str:
+                return "".join(ch for ch in name.upper() if ch.isalnum())
+
+            normalized_names = {_normalize(name): name for name in names}
+
             for name in names:
                 if hasattr(enum_obj, name):
                     return getattr(enum_obj, name)
+
+            for attr in dir(enum_obj):
+                if _normalize(attr) in normalized_names:
+                    try:
+                        value = getattr(enum_obj, attr)
+                    except Exception:
+                        continue
+                    if not callable(value):
+                        return value
 
             members_map = getattr(enum_obj, "__members__", None)
             if isinstance(members_map, dict) and members_map:
                 for name in names:
                     if name in members_map:
                         return members_map[name]
+                for key, value in members_map.items():
+                    if _normalize(key) in normalized_names:
+                        return value
                 return next(iter(members_map.values()))
 
             for raw in (0, 1):
